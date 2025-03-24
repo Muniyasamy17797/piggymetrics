@@ -84,7 +84,7 @@ public class AccountServiceImpl implements AccountService {
 		account.setNote(update.getNote());
 		account.setLastSeen(new Date());
 		repository.save(account);
-
+		log.info("new account has been created: " + account);
 		log.debug("account {} changes has been saved", name);
 
 		statisticsClient.updateStatistics(name, account);
