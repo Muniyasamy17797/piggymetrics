@@ -5,9 +5,10 @@ spring:
     config:
       uri: http://config:8888
       fail-fast: true
-      password: ${CONFIG_SERVICE_PASSWORD}
+      password: password
       username: user
-
+server:
+  port: 8761
 eureka:
   instance:
     prefer-ip-address: true

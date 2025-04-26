@@ -40,6 +40,20 @@
 					<finalName>${project.name}</finalName>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.codehaus.mojo</groupId>
+				<artifactId>exec-maven-plugin</artifactId>
+				<version>3.0.0</version>
+				<configuration>
+					<executable>java</executable>
+					<arguments>
+						<argument>--add-opens</argument>
+						<argument>java.base/java.lang=ALL-UNNAMED</argument>
+						<argument>-jar</argument>
+						<argument>target/your-application.jar</argument>
+					</arguments>
+				</configuration>
+			</plugin>
 		</plugins>
 	</build>
 

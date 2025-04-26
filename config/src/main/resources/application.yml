@@ -8,7 +8,8 @@ spring:
      active: native
   security:
     user:
-      password: ${CONFIG_SERVICE_PASSWORD}
+      name: user
+      password: password
 
 server:
   port: 8888

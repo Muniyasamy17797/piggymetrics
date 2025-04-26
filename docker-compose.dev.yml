@@ -1,62 +1,96 @@
 version: '2.1'
 services:
   rabbitmq:
+    image: rabbitmq:latest
+    networks:
+      - my-network
     ports:
       - 5672:5672
+      - 15672:15672
 
   config:
     build: config
+    networks:
+      - my-network
     ports:
       - 8888:8888
 
   registry:
     build: registry
+    networks:
+      - my-network
 
-  gateway:
-    build: gateway
+#  gateway:
+#    build: gateway
+#    networks:
+#      - my-network
+#
+#  auth-service:
+#    build: auth-service
+#    networks:
+#      - my-network
+#    ports:
+#      - 5000:5000
+#
+#  auth-mongodb:
+#    build: mongodb
+#    networks:
+#      - my-network
+#    ports:
+#      - 25000:27017
+#
+#  account-service:
+#    build: account-service
+#    networks:
+#      - my-network
+#    ports:
+#      - 6000:6000
+#
+#  account-mongodb:
+#    build: mongodb
+#    networks:
+#      - my-network
+#    ports:
+#      - 26000:27017
+#
+#  statistics-service:
+#    build: statistics-service
+#    networks:
+#      - my-network
+#    ports:
+#      - 7000:7000
+#
+#  statistics-mongodb:
+#    build: mongodb
+#    networks:
+#      - my-network
+#    ports:
+#      - 27000:27017
+#
+#  notification-service:
+#    build: notification-service
+#    networks:
+#      - my-network
+#    ports:
+#      - 8000:8000
+#
+#  notification-mongodb:
+#    build: mongodb
+#    networks:
+#      - my-network
+#    ports:
+#      - 28000:27017
+#
+#  monitoring:
+#    build: monitoring
+#    networks:
+#      - my-network
+#
+#  turbine-stream-service:
+#    build: turbine-stream-service
+#    networks:
+#      - my-network
 
-  auth-service:
-    build: auth-service
-    ports:
-      - 5000:5000
-
-  auth-mongodb:
-    build: mongodb
-    ports:
-      - 25000:27017
-
-  account-service:
-    build: account-service
-    ports:
-      - 6000:6000
-
-  account-mongodb:
-    build: mongodb
-    ports:
-      - 26000:27017
-
-  statistics-service:
-    build: statistics-service
-    ports:
-      - 7000:7000
-
-  statistics-mongodb:
-    build: mongodb
-    ports:
-      - 27000:27017
-
-  notification-service:
-    build: notification-service
-    ports:
-      - 8000:8000
-
-  notification-mongodb:
-    build: mongodb
-    ports:
-      - 28000:27017
-
-  monitoring:
-    build: monitoring
-
-  turbine-stream-service:
-    build: turbine-stream-service
+networks:
+  my-network:
+    driver: bridge
