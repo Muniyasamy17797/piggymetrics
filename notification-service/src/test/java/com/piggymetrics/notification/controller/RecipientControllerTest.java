@@ -7,86 +7,99 @@ import com.piggymetrics.notification.domain.NotificationSettings;
 import com.piggymetrics.notification.domain.NotificationType;
 import com.piggymetrics.notification.domain.Recipient;
 import com.piggymetrics.notification.service.RecipientService;
-import com.sun.security.auth.UserPrincipal;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@RunWith(SpringRunner.class)
-@SpringBootTest
-public class RecipientControllerTest {
+@WebMvcTest(RecipientController.class)
+@ExtendWith(MockitoExtension.class)
+class RecipientControllerTest {
 
-	private static final ObjectMapper mapper = new ObjectMapper();
+    private static final ObjectMapper mapper = new ObjectMapper();
 
-	@InjectMocks
-	private RecipientController recipientController;
+    @InjectMocks
+    private RecipientController recipientController;
 
-	@Mock
-	private RecipientService recipientService;
+    @Mock
+    private RecipientService recipientService;
 
-	private MockMvc mockMvc;
+    @Mock
+    private Authentication authentication;
 
-	@Before
-	public void setup() {
-		initMocks(this);
-		this.mockMvc = MockMvcBuilders.standaloneSetup(recipientController).build();
-	}
+    @Mock
+    private SecurityContext securityContext;
 
-	@Test
-	public void shouldSaveCurrentRecipientSettings() throws Exception {
+    private MockMvc mockMvc;
 
-		Recipient recipient = getStubRecipient();
-		String json = mapper.writeValueAsString(recipient);
+    @BeforeEach
+    void setup() {
+        mockMvc = MockMvcBuilders.standaloneSetup(recipientController).build();
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+        SecurityContextHolder.setContext(securityContext);
+    }
 
-		mockMvc.perform(put("/recipients/current").principal(new UserPrincipal(recipient.getAccountName())).contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isOk());
-	}
+    @Test
+    void shouldSaveCurrentRecipientSettings() throws Exception {
+        Recipient recipient = getStubRecipient();
+		String accountName = recipient.getAccountName();
+        String json = mapper.writeValueAsString(recipient);
 
-	@Test
-	public void shouldGetCurrentRecipientSettings() throws Exception {
+        when(authentication.getName()).thenReturn(recipient.getAccountName());
+        when(recipientService.save(accountName,recipient)).thenReturn(recipient);
 
-		Recipient recipient = getStubRecipient();
-		when(recipientService.findByAccountName(recipient.getAccountName())).thenReturn(recipient);
+        mockMvc.perform(put("/recipients/current")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+                .andExpect(status().isOk());
+    }
 
-		mockMvc.perform(get("/recipients/current").principal(new UserPrincipal(recipient.getAccountName())))
-				.andExpect(jsonPath("$.accountName").value(recipient.getAccountName()))
-				.andExpect(status().isOk());
-	}
+    @Test
+    void shouldGetCurrentRecipientSettings() throws Exception {
+        Recipient recipient = getStubRecipient();
+        
+        when(authentication.getName()).thenReturn(recipient.getAccountName());
+        when(recipientService.findByAccountName(recipient.getAccountName())).thenReturn(recipient);
 
-	private Recipient getStubRecipient() {
+        mockMvc.perform(get("/recipients/current"))
+                .andExpect(jsonPath("$.accountName").value(recipient.getAccountName()))
+                .andExpect(status().isOk());
+    }
 
-		NotificationSettings remind = new NotificationSettings();
-		remind.setActive(true);
-		remind.setFrequency(Frequency.WEEKLY);
-		remind.setLastNotified(null);
+    private Recipient getStubRecipient() {
+        NotificationSettings remind = new NotificationSettings();
+        remind.setActive(true);
+        remind.setFrequency(Frequency.WEEKLY);
+        remind.setLastNotified(null);
 
-		NotificationSettings backup = new NotificationSettings();
-		backup.setActive(false);
-		backup.setFrequency(Frequency.MONTHLY);
-		backup.setLastNotified(null);
+        NotificationSettings backup = new NotificationSettings();
+        backup.setActive(false);
+        backup.setFrequency(Frequency.MONTHLY);
+        backup.setLastNotified(null);
 
-		Recipient recipient = new Recipient();
-		recipient.setAccountName("test");
-		recipient.setEmail("test@test.com");
-		recipient.setScheduledNotifications(ImmutableMap.of(
-				NotificationType.BACKUP, backup,
-				NotificationType.REMIND, remind
-		));
+        Recipient recipient = new Recipient();
+        recipient.setAccountName("test");
+        recipient.setEmail("test@test.com");
+        recipient.setScheduledNotifications(ImmutableMap.of(
+                NotificationType.BACKUP, backup,
+                NotificationType.REMIND, remind
+        ));
 
-		return recipient;
-	}
+        return recipient;
+    }
 }
