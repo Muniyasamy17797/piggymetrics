@@ -3,72 +3,62 @@ package com.piggymetrics.auth.controller;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.piggymetrics.auth.domain.User;
 import com.piggymetrics.auth.service.UserService;
-import com.sun.security.auth.UserPrincipal;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.mockito.MockitoAnnotations.initMocks;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@RunWith(SpringRunner.class)
-@SpringBootTest
-public class UserControllerTest {
+@WebMvcTest(UserController.class)
+class UserControllerTest {
 
-	private static final ObjectMapper mapper = new ObjectMapper();
+    @Autowired
+    private MockMvc mockMvc;
 
-	@InjectMocks
-	private UserController accountController;
+    @Autowired
+    private ObjectMapper objectMapper;
 
-	@Mock
-	private UserService userService;
+    @MockBean
+    private UserService userService;
 
-	private MockMvc mockMvc;
+    @Test
+    void shouldCreateNewUser() throws Exception {
+        User user = new User();
+        user.setUsername("test");
+        user.setPassword("password");
 
-	@Before
-	public void setup() {
-		initMocks(this);
-		this.mockMvc = MockMvcBuilders.standaloneSetup(accountController).build();
-	}
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(user)))
+                .andExpect(status().isOk());
+    }
 
-	@Test
-	public void shouldCreateNewUser() throws Exception {
+    @Test
+    void shouldFailWhenUserIsNotValid() throws Exception {
+        User user = new User();
+        user.setUsername("t");
+        user.setPassword("p");
 
-		final User user = new User();
-		user.setUsername("test");
-		user.setPassword("password");
+        mockMvc.perform(post("/users")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(user)))
+                .andExpect(status().isBadRequest());
+    }
 
-		String json = mapper.writeValueAsString(user);
-
-		mockMvc.perform(post("/users").contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isOk());
-	}
-
-	@Test
-	public void shouldFailWhenUserIsNotValid() throws Exception {
-
-		final User user = new User();
-		user.setUsername("t");
-		user.setPassword("p");
-
-		mockMvc.perform(post("/users"))
-				.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	public void shouldReturnCurrentUser() throws Exception {
-		mockMvc.perform(get("/users/current").principal(new UserPrincipal("test")))
-				.andExpect(jsonPath("$.name").value("test"))
-				.andExpect(status().isOk());
-	}
+    @Test
+    @WithMockUser(username = "test")
+    void shouldReturnCurrentUser() throws Exception {
+        mockMvc.perform(get("/users/current"))
+                .andExpect(jsonPath("$.name").value("test"))
+                .andExpect(status().isOk());
+    }
 }
