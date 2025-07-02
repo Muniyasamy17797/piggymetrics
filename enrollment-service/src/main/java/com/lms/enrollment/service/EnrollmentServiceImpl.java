@@ -18,9 +18,15 @@ import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
+@CacheConfig(cacheNames = {"enrollments"})
 public class EnrollmentServiceImpl implements EnrollmentService {
 
+    private final ApplicationEventPublisher eventPublisher;
+    private final NotificationServiceClient notificationClient;
+
     private final EnrollmentRepository enrollmentRepository;
+    private final ProgressAnalyticsService progressAnalyticsService;
+    private final WebClient certificateServiceClient;
 
     @Override
     @Transactional
@@ -38,6 +44,7 @@ public class EnrollmentServiceImpl implements EnrollmentService {
     }
 
     @Override
+    @Cacheable(key = "#enrollmentId")
     public Mono<Enrollment> getEnrollment(Long enrollmentId) {
         return Mono.fromCallable(() ->
             enrollmentRepository.findById(enrollmentId)
@@ -68,6 +75,8 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
     @Override
     @Transactional
+    @CacheEvict(key = "#enrollmentId")
+    @Async("asyncExecutor")
     public Mono<LessonProgress> updateLessonProgress(Long enrollmentId, Long lessonId, LessonProgress progress) {
         return Mono.fromCallable(() -> {
             Enrollment enrollment = enrollmentRepository.findById(enrollmentId)
@@ -86,14 +95,53 @@ public class EnrollmentServiceImpl implements EnrollmentService {
 
             lessonProgress.setStatus(progress.getStatus());
             lessonProgress.setScore(progress.getScore());
+            lessonProgress.setTimeSpentMinutes(
+                lessonProgress.getTimeSpentMinutes() + progress.getTimeSpentMinutes()
+            );
+            lessonProgress.setAttemptsCount(
+                lessonProgress.getAttemptsCount() + 1
+            );
+            
+            if (progress.getCompletedActivities() != null) {
+                lessonProgress.getCompletedActivities().addAll(progress.getCompletedActivities());
+            }
+            
+            if (progress.getCompletedQuizzes() != null) {
+                lessonProgress.getCompletedQuizzes().addAll(progress.getCompletedQuizzes());
+            }
+            
+            if (progress.getSubmittedAssignments() != null) {
+                lessonProgress.getSubmittedAssignments().addAll(progress.getSubmittedAssignments());
+            }
 
             if (progress.getStatus() == LessonStatus.COMPLETED) {
                 lessonProgress.setCompletedAt(LocalDateTime.now());
+                
+                // Send notification for lesson completion
+                notificationClient.sendNotification(
+                    enrollment.getStudentId(),
+                    "Lesson Completed",
+                    "You have completed lesson " + lessonId + " in the course!"
+                ).subscribe();
             }
 
-            enrollmentRepository.save(enrollment);
+            // Update overall enrollment progress
+            progressAnalyticsService.updateEnrollmentAnalytics(enrollment);
+            enrollment = enrollmentRepository.save(enrollment);
+            
+            // Publish progress update event
+            eventPublisher.publishEvent(new ProgressUpdateEvent(
+                enrollment.getId(),
+                enrollment.getStudentId(),
+                enrollment.getCourseId(),
+                enrollment.getProgress(),
+                enrollment.getStatus().toString(),
+                enrollment.getAverageScore()
+            ));
+            
             return lessonProgress;
         }).subscribeOn(Schedulers.boundedElastic());
+    }
     }
 
     @Override
@@ -103,16 +151,26 @@ public class EnrollmentServiceImpl implements EnrollmentService {
             Enrollment enrollment = enrollmentRepository.findById(enrollmentId)
                     .orElseThrow(() -> new RuntimeException("Enrollment not found"));
 
-            long completedLessons = enrollment.getLessonProgresses().stream()
-                    .filter(lp -> lp.getStatus() == LessonStatus.COMPLETED)
-                    .count();
+            progressAnalyticsService.updateEnrollmentAnalytics(enrollment);
 
-            double progress = (double) completedLessons / enrollment.getLessonProgresses().size() * 100;
-            enrollment.setProgress(progress);
-
-            if (progress >= 100) {
+            if (enrollment.getProgress() >= 100 && enrollment.getStatus() != EnrollmentStatus.COMPLETED) {
                 enrollment.setStatus(EnrollmentStatus.COMPLETED);
                 enrollment.setCompletedAt(LocalDateTime.now());
+                
+                // Generate certificate
+                certificateServiceClient.post()
+                    .uri("/api/certificates")
+                    .bodyValue(new CertificateRequest(
+                        enrollment.getStudentId(),
+                        enrollment.getCourseId(),
+                        enrollment.getAverageScore()
+                    ))
+                    .retrieve()
+                    .bodyToMono(CertificateResponse.class)
+                    .subscribe(response -> {
+                        enrollment.setCertificateId(response.getCertificateId());
+                        enrollmentRepository.save(enrollment);
+                    });
             }
 
             return enrollmentRepository.save(enrollment);

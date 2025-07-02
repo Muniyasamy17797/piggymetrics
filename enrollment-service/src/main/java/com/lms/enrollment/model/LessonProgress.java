@@ -28,6 +28,19 @@ public class LessonProgress {
     private LessonStatus status = LessonStatus.NOT_STARTED;
 
     private Double score;
+    
+    private Integer timeSpentMinutes = 0;
+    
+    private Integer attemptsCount = 0;
+    
+    @ElementCollection
+    private List<Long> completedActivities = new ArrayList<>();
+    
+    @ElementCollection
+    private List<Long> completedQuizzes = new ArrayList<>();
+    
+    @ElementCollection
+    private List<Long> submittedAssignments = new ArrayList<>();
 
     private LocalDateTime completedAt;
 

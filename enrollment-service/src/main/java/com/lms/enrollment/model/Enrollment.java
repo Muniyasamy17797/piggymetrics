@@ -29,6 +29,18 @@ public class Enrollment {
 
     private Double progress = 0.0;
 
+    private Double averageScore = 0.0;
+    
+    private Integer totalTimeSpentMinutes = 0;
+    
+    private Integer completedLessons = 0;
+    
+    private Integer completedQuizzes = 0;
+    
+    private Integer submittedAssignments = 0;
+    
+    private Long certificateId;
+
     @OneToMany(mappedBy = "enrollment", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<LessonProgress> lessonProgresses = new ArrayList<>();
 
