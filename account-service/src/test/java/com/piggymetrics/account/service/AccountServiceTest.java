@@ -1,149 +1,181 @@
 package com.piggymetrics.account.service;
 
-import com.piggymetrics.account.client.AuthServiceClient;
-import com.piggymetrics.account.client.StatisticsServiceClient;
-import com.piggymetrics.account.domain.*;
+import com.piggymetrics.account.domain.Account;
+import com.piggymetrics.account.domain.Transaction;
+import com.piggymetrics.account.domain.User;
+import com.piggymetrics.account.dto.AccountDTO;
+import com.piggymetrics.account.dto.TransactionDTO;
+import com.piggymetrics.account.mapper.AccountMapper;
+import com.piggymetrics.account.mapper.TransactionMapper;
 import com.piggymetrics.account.repository.AccountRepository;
-import org.junit.Before;
-import org.junit.Test;
-import org.mockito.InjectMocks;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
 
+import javax.validation.ValidationException;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
-import static org.mockito.MockitoAnnotations.initMocks;
 
-public class AccountServiceTest {
+@ExtendWith(MockitoExtension.class)
+class AccountServiceTest {
 
-	@InjectMocks
-	private AccountServiceImpl accountService;
+    @Mock
+    private AccountRepository accountRepository;
 
-	@Mock
-	private StatisticsServiceClient statisticsClient;
+    @Mock
+    private AccountMapper accountMapper;
 
-	@Mock
-	private AuthServiceClient authClient;
+    @Mock
+    private TransactionMapper transactionMapper;
 
-	@Mock
-	private AccountRepository repository;
+    private AccountService accountService;
 
-	@Before
-	public void setup() {
-		initMocks(this);
-	}
+    @BeforeEach
+    void setUp() {
+        accountService = new AccountServiceImpl(accountRepository, accountMapper, transactionMapper);
+    }
 
-	@Test
-	public void shouldFindByName() {
+    @Test
+    void findByName_WhenAccountExists_ReturnsAccountDTO() {
+        // Arrange
+        String name = "testUser";
+        Account account = new Account();
+        account.setName(name);
+        AccountDTO expectedDTO = new AccountDTO();
+        expectedDTO.setName(name);
 
-		final Account account = new Account();
-		account.setName("test");
+        when(accountRepository.findByName(name)).thenReturn(Optional.of(account));
+        when(accountMapper.toDto(account)).thenReturn(expectedDTO);
 
-		when(accountService.findByName(account.getName())).thenReturn(account);
-		Account found = accountService.findByName(account.getName());
+        // Act
+        AccountDTO result = accountService.findByName(name);
 
-		assertEquals(account, found);
-	}
+        // Assert
+        assertNotNull(result);
+        assertEquals(name, result.getName());
+        verify(accountRepository).findByName(name);
+        verify(accountMapper).toDto(account);
+    }
 
-	@Test(expected = IllegalArgumentException.class)
-	public void shouldFailWhenNameIsEmpty() {
-		accountService.findByName("");
-	}
+    @Test
+    void findByName_WhenAccountDoesNotExist_ThrowsException() {
+        // Arrange
+        String name = "nonExistentUser";
+        when(accountRepository.findByName(name)).thenReturn(Optional.empty());
 
-	@Test
-	public void shouldCreateAccountWithGivenUser() {
+        // Act & Assert
+        assertThrows(RuntimeException.class, () -> accountService.findByName(name));
+        verify(accountRepository).findByName(name);
+    }
 
-		User user = new User();
-		user.setUsername("test");
+    @Test
+    void create_WhenAccountDoesNotExist_CreatesNewAccount() {
+        // Arrange
+        User user = new User();
+        user.setUsername("newUser");
+        Account account = new Account();
+        account.setName(user.getUsername());
+        AccountDTO expectedDTO = new AccountDTO();
+        expectedDTO.setName(user.getUsername());
 
-		Account account = accountService.create(user);
+        when(accountRepository.existsByName(user.getUsername())).thenReturn(false);
+        when(accountRepository.save(any(Account.class))).thenReturn(account);
+        when(accountMapper.toDto(account)).thenReturn(expectedDTO);
 
-		assertEquals(user.getUsername(), account.getName());
-		assertEquals(0, account.getSaving().getAmount().intValue());
-		assertEquals(Currency.getDefault(), account.getSaving().getCurrency());
-		assertEquals(0, account.getSaving().getInterest().intValue());
-		assertEquals(false, account.getSaving().getDeposit());
-		assertEquals(false, account.getSaving().getCapitalization());
-		assertNotNull(account.getLastSeen());
+        // Act
+        AccountDTO result = accountService.create(user);
 
-		verify(authClient, times(1)).createUser(user);
-		verify(repository, times(1)).save(account);
-	}
+        // Assert
+        assertNotNull(result);
+        assertEquals(user.getUsername(), result.getName());
+        verify(accountRepository).existsByName(user.getUsername());
+        verify(accountRepository).save(any(Account.class));
+        verify(accountMapper).toDto(account);
+    }
 
-	@Test
-	public void shouldSaveChangesWhenUpdatedAccountGiven() {
+    @Test
+    void create_WhenAccountExists_ThrowsValidationException() {
+        // Arrange
+        User user = new User();
+        user.setUsername("existingUser");
+        when(accountRepository.existsByName(user.getUsername())).thenReturn(true);
 
-		Item grocery = new Item();
-		grocery.setTitle("Grocery");
-		grocery.setAmount(new BigDecimal(10));
-		grocery.setCurrency(Currency.USD);
-		grocery.setPeriod(TimePeriod.DAY);
-		grocery.setIcon("meal");
+        // Act & Assert
+        assertThrows(ValidationException.class, () -> accountService.create(user));
+        verify(accountRepository).existsByName(user.getUsername());
+        verify(accountRepository, never()).save(any(Account.class));
+    }
 
-		Item salary = new Item();
-		salary.setTitle("Salary");
-		salary.setAmount(new BigDecimal(9100));
-		salary.setCurrency(Currency.USD);
-		salary.setPeriod(TimePeriod.MONTH);
-		salary.setIcon("wallet");
+    @Test
+    void findInactiveAccounts_ReturnsInactiveAccounts() {
+        // Arrange
+        Account account1 = new Account();
+        account1.setName("inactive1");
+        Account account2 = new Account();
+        account2.setName("inactive2");
+        List<Account> inactiveAccounts = Arrays.asList(account1, account2);
 
-		Saving saving = new Saving();
-		saving.setAmount(new BigDecimal(1500));
-		saving.setCurrency(Currency.USD);
-		saving.setInterest(new BigDecimal("3.32"));
-		saving.setDeposit(true);
-		saving.setCapitalization(false);
+        AccountDTO dto1 = new AccountDTO();
+        dto1.setName("inactive1");
+        AccountDTO dto2 = new AccountDTO();
+        dto2.setName("inactive2");
 
-		final Account update = new Account();
-		update.setName("test");
-		update.setNote("test note");
-		update.setIncomes(Arrays.asList(salary));
-		update.setExpenses(Arrays.asList(grocery));
-		update.setSaving(saving);
+        when(accountRepository.findInactiveAccounts(any(LocalDateTime.class)))
+                .thenReturn(inactiveAccounts);
+        when(accountMapper.toDto(account1)).thenReturn(dto1);
+        when(accountMapper.toDto(account2)).thenReturn(dto2);
 
-		final Account account = new Account();
+        // Act
+        List<AccountDTO> result = accountService.findInactiveAccounts();
 
-		when(accountService.findByName("test")).thenReturn(account);
-		accountService.saveChanges("test", update);
+        // Assert
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        verify(accountRepository).findInactiveAccounts(any(LocalDateTime.class));
+        verify(accountMapper, times(2)).toDto(any(Account.class));
+    }
 
-		assertEquals(update.getNote(), account.getNote());
-		assertNotNull(account.getLastSeen());
+    @Test
+    void addTransaction_UpdatesBalanceCorrectly() {
+        // Arrange
+        String accountName = "testUser";
+        Account account = new Account();
+        account.setName(accountName);
+        account.setBalance(new BigDecimal("100.00"));
 
-		assertEquals(update.getSaving().getAmount(), account.getSaving().getAmount());
-		assertEquals(update.getSaving().getCurrency(), account.getSaving().getCurrency());
-		assertEquals(update.getSaving().getInterest(), account.getSaving().getInterest());
-		assertEquals(update.getSaving().getDeposit(), account.getSaving().getDeposit());
-		assertEquals(update.getSaving().getCapitalization(), account.getSaving().getCapitalization());
+        TransactionDTO transactionDTO = new TransactionDTO();
+        transactionDTO.setAmount(new BigDecimal("50.00"));
+        transactionDTO.setType(Transaction.TransactionType.CREDIT);
 
-		assertEquals(update.getExpenses().size(), account.getExpenses().size());
-		assertEquals(update.getIncomes().size(), account.getIncomes().size());
+        Transaction transaction = new Transaction();
+        transaction.setAmount(new BigDecimal("50.00"));
+        transaction.setType(Transaction.TransactionType.CREDIT);
 
-		assertEquals(update.getExpenses().get(0).getTitle(), account.getExpenses().get(0).getTitle());
-		assertEquals(0, update.getExpenses().get(0).getAmount().compareTo(account.getExpenses().get(0).getAmount()));
-		assertEquals(update.getExpenses().get(0).getCurrency(), account.getExpenses().get(0).getCurrency());
-		assertEquals(update.getExpenses().get(0).getPeriod(), account.getExpenses().get(0).getPeriod());
-		assertEquals(update.getExpenses().get(0).getIcon(), account.getExpenses().get(0).getIcon());
-		
-		assertEquals(update.getIncomes().get(0).getTitle(), account.getIncomes().get(0).getTitle());
-		assertEquals(0, update.getIncomes().get(0).getAmount().compareTo(account.getIncomes().get(0).getAmount()));
-		assertEquals(update.getIncomes().get(0).getCurrency(), account.getIncomes().get(0).getCurrency());
-		assertEquals(update.getIncomes().get(0).getPeriod(), account.getIncomes().get(0).getPeriod());
-		assertEquals(update.getIncomes().get(0).getIcon(), account.getIncomes().get(0).getIcon());
-		
-		verify(repository, times(1)).save(account);
-		verify(statisticsClient, times(1)).updateStatistics("test", account);
-	}
+        AccountDTO expectedDTO = new AccountDTO();
+        expectedDTO.setBalance(new BigDecimal("150.00"));
 
-	@Test(expected = IllegalArgumentException.class)
-	public void shouldFailWhenNoAccountsExistedWithGivenName() {
-		final Account update = new Account();
-		update.setIncomes(Arrays.asList(new Item()));
-		update.setExpenses(Arrays.asList(new Item()));
+        when(accountRepository.findByName(accountName)).thenReturn(Optional.of(account));
+        when(transactionMapper.toEntity(transactionDTO)).thenReturn(transaction);
+        when(accountRepository.save(any(Account.class))).thenReturn(account);
+        when(accountMapper.toDto(account)).thenReturn(expectedDTO);
 
-		when(accountService.findByName("test")).thenReturn(null);
-		accountService.saveChanges("test", update);
-	}
+        // Act
+        AccountDTO result = accountService.addTransaction(accountName, transactionDTO);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(new BigDecimal("150.00"), result.getBalance());
+        verify(accountRepository).findByName(accountName);
+        verify(accountRepository).save(account);
+        verify(accountMapper).toDto(account);
+    }
 }

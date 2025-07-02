@@ -1,148 +1,142 @@
 package com.piggymetrics.account.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.common.collect.ImmutableList;
-import com.piggymetrics.account.domain.*;
+import com.piggymetrics.account.dto.AccountDTO;
+import com.piggymetrics.account.dto.TransactionDTO;
+import com.piggymetrics.account.domain.User;
 import com.piggymetrics.account.service.AccountService;
-import com.sun.security.auth.UserPrincipal;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.http.MediaType;
-import org.springframework.test.context.junit4.SpringRunner;
+import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.math.BigDecimal;
-import java.util.Date;
+import java.security.Principal;
+import java.util.Arrays;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
-import static org.mockito.MockitoAnnotations.initMocks;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@RunWith(SpringRunner.class)
-@SpringBootTest
-public class AccountControllerTest {
+@WebMvcTest(AccountController.class)
+class AccountControllerTest {
 
-	private static final ObjectMapper mapper = new ObjectMapper();
+    @Autowired
+    private MockMvc mockMvc;
 
-	@InjectMocks
-	private AccountController accountController;
+    @MockBean
+    private AccountService accountService;
 
-	@Mock
-	private AccountService accountService;
+    @Autowired
+    private ObjectMapper objectMapper;
 
-	private MockMvc mockMvc;
+    @Test
+    @WithMockUser
+    void getAccountByName_ReturnsAccount() throws Exception {
+        // Arrange
+        String accountName = "testUser";
+        AccountDTO accountDTO = new AccountDTO();
+        accountDTO.setName(accountName);
+        accountDTO.setBalance(new BigDecimal("100.00"));
 
-	@Before
-	public void setup() {
-		initMocks(this);
-		this.mockMvc = MockMvcBuilders.standaloneSetup(accountController).build();
-	}
+        when(accountService.findByName(accountName)).thenReturn(accountDTO);
 
-	@Test
-	public void shouldGetAccountByName() throws Exception {
+        // Act & Assert
+        mockMvc.perform(get("/api/v1/accounts/{name}", accountName))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value(accountName))
+                .andExpect(jsonPath("$.balance").value("100.00"));
+    }
 
-		final Account account = new Account();
-		account.setName("test");
+    @Test
+    @WithMockUser
+    void getCurrentAccount_ReturnsCurrentUserAccount() throws Exception {
+        // Arrange
+        String username = "currentUser";
+        AccountDTO accountDTO = new AccountDTO();
+        accountDTO.setName(username);
 
-		when(accountService.findByName(account.getName())).thenReturn(account);
+        when(accountService.findByName(username)).thenReturn(accountDTO);
 
-		mockMvc.perform(get("/" + account.getName()))
-				.andExpect(jsonPath("$.name").value(account.getName()))
-				.andExpect(status().isOk());
-	}
+        // Act & Assert
+        mockMvc.perform(get("/api/v1/accounts/current")
+                        .principal(() -> username))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value(username));
+    }
 
-	@Test
-	public void shouldGetCurrentAccount() throws Exception {
+    @Test
+    @WithMockUser
+    void createNewAccount_CreatesAccount() throws Exception {
+        // Arrange
+        User user = new User();
+        user.setUsername("newUser");
 
-		final Account account = new Account();
-		account.setName("test");
+        AccountDTO accountDTO = new AccountDTO();
+        accountDTO.setName(user.getUsername());
 
-		when(accountService.findByName(account.getName())).thenReturn(account);
+        when(accountService.create(any(User.class))).thenReturn(accountDTO);
 
-		mockMvc.perform(get("/current").principal(new UserPrincipal(account.getName())))
-				.andExpect(jsonPath("$.name").value(account.getName()))
-				.andExpect(status().isOk());
-	}
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/accounts")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(user)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value(user.getUsername()));
+    }
 
-	@Test
-	public void shouldSaveCurrentAccount() throws Exception {
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void getInactiveAccounts_ReturnsInactiveAccounts() throws Exception {
+        // Arrange
+        AccountDTO account1 = new AccountDTO();
+        account1.setName("inactive1");
+        AccountDTO account2 = new AccountDTO();
+        account2.setName("inactive2");
 
-		Saving saving = new Saving();
-		saving.setAmount(new BigDecimal(1500));
-		saving.setCurrency(Currency.USD);
-		saving.setInterest(new BigDecimal("3.32"));
-		saving.setDeposit(true);
-		saving.setCapitalization(false);
+        when(accountService.findInactiveAccounts()).thenReturn(Arrays.asList(account1, account2));
 
-		Item grocery = new Item();
-		grocery.setTitle("Grocery");
-		grocery.setAmount(new BigDecimal(10));
-		grocery.setCurrency(Currency.USD);
-		grocery.setPeriod(TimePeriod.DAY);
-		grocery.setIcon("meal");
+        // Act & Assert
+        mockMvc.perform(get("/api/v1/accounts/inactive"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].name").value("inactive1"))
+                .andExpect(jsonPath("$[1].name").value("inactive2"));
+    }
 
-		Item salary = new Item();
-		salary.setTitle("Salary");
-		salary.setAmount(new BigDecimal(9100));
-		salary.setCurrency(Currency.USD);
-		salary.setPeriod(TimePeriod.MONTH);
-		salary.setIcon("wallet");
+    @Test
+    @WithMockUser
+    void addTransaction_AddsTransactionToAccount() throws Exception {
+        // Arrange
+        String accountName = "testUser";
+        TransactionDTO transactionDTO = new TransactionDTO();
+        transactionDTO.setAmount(new BigDecimal("50.00"));
 
-		final Account account = new Account();
-		account.setName("test");
-		account.setNote("test note");
-		account.setLastSeen(new Date());
-		account.setSaving(saving);
-		account.setExpenses(ImmutableList.of(grocery));
-		account.setIncomes(ImmutableList.of(salary));
+        AccountDTO updatedAccount = new AccountDTO();
+        updatedAccount.setName(accountName);
+        updatedAccount.setBalance(new BigDecimal("150.00"));
 
-		String json = mapper.writeValueAsString(account);
+        when(accountService.addTransaction(eq(accountName), any(TransactionDTO.class)))
+                .thenReturn(updatedAccount);
 
-		mockMvc.perform(put("/current").principal(new UserPrincipal(account.getName())).contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isOk());
-	}
+        // Act & Assert
+        mockMvc.perform(post("/api/v1/accounts/{name}/transactions", accountName)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(transactionDTO)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.name").value(accountName))
+                .andExpect(jsonPath("$.balance").value("150.00"));
+    }
 
-	@Test
-	public void shouldFailOnValidationTryingToSaveCurrentAccount() throws Exception {
-
-		final Account account = new Account();
-		account.setName("test");
-
-		String json = mapper.writeValueAsString(account);
-
-		mockMvc.perform(put("/current").principal(new UserPrincipal(account.getName())).contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isBadRequest());
-	}
-
-	@Test
-	public void shouldRegisterNewAccount() throws Exception {
-
-		final User user = new User();
-		user.setUsername("test");
-		user.setPassword("password");
-
-		String json = mapper.writeValueAsString(user);
-		System.out.println(json);
-		mockMvc.perform(post("/").principal(new UserPrincipal("test")).contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isOk());
-	}
-
-	@Test
-	public void shouldFailOnValidationTryingToRegisterNewAccount() throws Exception {
-
-		final User user = new User();
-		user.setUsername("t");
-
-		String json = mapper.writeValueAsString(user);
-
-		mockMvc.perform(post("/").principal(new UserPrincipal("test")).contentType(MediaType.APPLICATION_JSON).content(json))
-				.andExpect(status().isBadRequest());
-	}
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void deleteAccount_DeletesAccount() throws Exception {
+        // Act & Assert
+        mockMvc.perform(delete("/api/v1/accounts/{name}", "testUser"))
+                .andExpect(status().isNoContent());
+    }
 }
