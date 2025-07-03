@@ -1,67 +1,72 @@
 package com.piggymetrics.notification.service;
 
-import com.piggymetrics.notification.client.AccountServiceClient;
-import com.piggymetrics.notification.domain.NotificationType;
-import com.piggymetrics.notification.domain.Recipient;
+import com.piggymetrics.notification.domain.Announcement;
+import com.piggymetrics.notification.domain.ChatMessage;
+import com.piggymetrics.notification.domain.QuizParticipation;
+import com.piggymetrics.notification.repository.AnnouncementRepository;
+import com.piggymetrics.notification.repository.ChatMessageRepository;
+import com.piggymetrics.notification.repository.QuizParticipationRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
-
-import java.util.List;
-import java.util.concurrent.CompletableFuture;
 
 @Service
 public class NotificationServiceImpl implements NotificationService {
+    private final Logger log = LoggerFactory.getLogger(getClass());
 
-	private final Logger log = LoggerFactory.getLogger(getClass());
+    @Autowired
+    private SimpMessagingTemplate messagingTemplate;
 
-	@Autowired
-	private AccountServiceClient client;
+    @Autowired
+    private ChatMessageRepository chatMessageRepository;
 
-	@Autowired
-	private RecipientService recipientService;
+    @Autowired
+    private QuizParticipationRepository quizParticipationRepository;
 
-	@Autowired
-	private EmailService emailService;
+    @Autowired
+    private AnnouncementRepository announcementRepository;
 
-	@Override
-	@Scheduled(cron = "${backup.cron}")
-	public void sendBackupNotifications() {
+    @Override
+    public void saveChatMessage(ChatMessage message) {
+        chatMessageRepository.save(message);
+    }
 
-		final NotificationType type = NotificationType.BACKUP;
+    @Override
+    public void processQuizAnswer(QuizParticipation participation) {
+        // TODO: Implement quiz answer validation logic
+        quizParticipationRepository.save(participation);
+        
+        // Notify the student about their result
+        messagingTemplate.convertAndSendToUser(
+            participation.getUserId(),
+            "/queue/quiz-results",
+            participation
+        );
+    }
 
-		List<Recipient> recipients = recipientService.findReadyToNotify(type);
-		log.info("found {} recipients for backup notification", recipients.size());
+    @Override
+    public void saveAnnouncement(Announcement announcement) {
+        announcementRepository.save(announcement);
+    }
 
-		recipients.forEach(recipient -> CompletableFuture.runAsync(() -> {
-			try {
-				String attachment = client.getAccount(recipient.getAccountName());
-				emailService.send(type, recipient, attachment);
-				recipientService.markNotified(type, recipient);
-			} catch (Throwable t) {
-				log.error("an error during backup notification for {}", recipient, t);
-			}
-		}));
-	}
+    @Override
+    public void notifyStudents(Announcement announcement) {
+        // TODO: Get enrolled students for the course and send individual notifications
+        // This would involve calling the enrollment-service to get the list of enrolled students
+        
+        // For now, we'll just broadcast to the course topic
+        messagingTemplate.convertAndSend(
+            "/topic/announcements." + announcement.getCourseId(),
+            announcement
+        );
+    }
 
-	@Override
-	@Scheduled(cron = "${remind.cron}")
-	public void sendRemindNotifications() {
-
-		final NotificationType type = NotificationType.REMIND;
-
-		List<Recipient> recipients = recipientService.findReadyToNotify(type);
-		log.info("found {} recipients for remind notification", recipients.size());
-
-		recipients.forEach(recipient -> CompletableFuture.runAsync(() -> {
-			try {
-				emailService.send(type, recipient, null);
-				recipientService.markNotified(type, recipient);
-			} catch (Throwable t) {
-				log.error("an error during remind notification for {}", recipient, t);
-			}
-		}));
-	}
+    @Override
+    public void handleProgressUpdate(String progressUpdate) {
+        // TODO: Parse progress update and notify relevant users
+        // This would typically involve updating the student's progress
+        // and notifying both the student and instructor
+    }
 }
