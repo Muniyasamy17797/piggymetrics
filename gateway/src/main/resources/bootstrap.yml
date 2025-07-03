@@ -7,3 +7,28 @@ spring:
       fail-fast: true
       password: ${CONFIG_SERVICE_PASSWORD}
       username: user
+    gateway:
+      metrics:
+        enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: ${spring.application.name}
+
+# Distributed tracing configuration
+spring.sleuth:
+  sampler:
+    probability: 1.0
+  zipkin:
+    baseUrl: http://zipkin:9411/

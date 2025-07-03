@@ -1,0 +1,62 @@
+logging:
+  level:
+    org.springframework.security: INFO
+    # Enable trace logging for distributed tracing
+    org.springframework.web: DEBUG
+    io.micrometer.tracing: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+    enable:
+      all: true
+
+# Tracing configuration
+spring:
+  application:
+    name: ${spring.application.name:unknown}
+  rabbitmq:
+    host: rabbitmq
+  zipkin:
+    baseUrl: http://zipkin:9411
+    enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+    baggage:
+      correlation:
+        enabled: true
+    propagation:
+      type: W3C
+
+hystrix:
+  command:
+    default:
+      execution:
+        isolation:
+          thread:
+            timeoutInMilliseconds: 10000
+
+eureka:
+  instance:
+    prefer-ip-address: true
+    metadata-map:
+      prometheus.scrape: "true"
+      prometheus.path: "/actuator/prometheus"
+      prometheus.port: "${server.port}"
+  client:
+    serviceUrl:
+      defaultZone: http://registry:8761/eureka/
+
+security:
+  oauth2:
+    resource:
+      user-info-uri: http://auth-service:5000/uaa/users/current
