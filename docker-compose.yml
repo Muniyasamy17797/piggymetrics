@@ -122,6 +122,7 @@ services:
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
       SPRING_REDIS_HOST: redis
+      SPRING_MONGODB_URI: mongodb://mongodb:27017/piggymetrics
     image: sqshq/piggymetrics-account-service
     restart: always
     depends_on:
@@ -132,6 +133,8 @@ services:
       redis:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      mongodb:
         condition: service_healthy
     logging:
       options:
@@ -204,5 +207,75 @@ services:
         max-size: "10m"
         max-file: "10"
 
+  mongodb:
+    image: mongo:4.4
+    restart: always
+    ports:
+      - 27017:27017
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  auth-mongodb:
+    image: mongo:4.4
+    restart: always
+    ports:
+      - 27018:27017
+    volumes:
+      - auth_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  account-mongodb:
+    image: mongo:4.4
+    restart: always
+    ports:
+      - 27019:27017
+    volumes:
+      - account_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  statistics-mongodb:
+    image: mongo:4.4
+    restart: always
+    ports:
+      - 27020:27017
+    volumes:
+      - statistics_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  notification-mongodb:
+    image: mongo:4.4
+    restart: always
+    ports:
+      - 27021:27017
+    volumes:
+      - notification_mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
 volumes:
   postgres_data:
+  mongodb_data:
+  auth_mongodb_data:
+  account_mongodb_data:
+  statistics_mongodb_data:
+  notification_mongodb_data:
